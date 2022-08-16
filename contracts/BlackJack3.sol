@@ -4,6 +4,7 @@ pragma solidity ^0.8.9;
 
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import "hardhat/console.sol";
 
 //Errors
 error InsufficientETH();
@@ -33,8 +34,10 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         GameState gameState;
         RandomOperationStatus randomOperationStatus;
         RandomOperationAt randomOperationAt;
-        uint256[] playerCards; // Baraja jugador
-        uint256[] dealerCards; // Baraja dealer
+        uint256[21] playerCards; // Baraja jugador
+        uint256 playerCardsNum;
+        uint256[21] dealerCards; // Baraja dealer
+        uint256 dealerCardsNum;
         uint256 amountBet;
         address player;
     }
@@ -42,6 +45,13 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     event GameStarted();
     event PlayerStand();
     event FullfilCalled();
+    event PlayerLose(
+        address player,
+        uint256[21] playerCards,
+        uint256 playerCardsValue,
+        uint256[21] dealerCards,
+        uint256 dealerCardsValue
+    );
 
     modifier inGame() {
         Table memory table = tables[msg.sender];
@@ -81,9 +91,10 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
     uint256 public constant MIN_AMOUNT = 100000000000000000; // 0.1 ETH
 
-    uint256 public requestId;
+    uint256 public s_requestId;
 
-    uint256[13] private CARDS_VALUE = [
+    uint256[14] private CARDS_VALUE = [
+        0, /*  Null*/
         11, /*   A */
         2, /*    2 */
         3, /**   3 */
@@ -97,6 +108,29 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         10, /**  J */
         10, /**  Q */
         10 /**   K */
+    ];
+    uint256[21] private EMPTY_ARRAY_21 = [
+        0, /**  1 */
+        0, /**  2 */
+        0, /**  3 */
+        0, /**  4 */
+        0, /**  5 */
+        0, /**  6 */
+        0, /**  7 */
+        0, /**  8 */
+        0, /**  9 */
+        0, /** 10 */
+        0, /** 11 */
+        0, /** 12 */
+        0, /** 13 */
+        0, /** 14 */
+        0, /** 15 */
+        0, /** 16 */
+        0, /** 17 */
+        0, /** 18 */
+        0, /** 19 */
+        0, /** 20 */
+        0 /**  21 */
     ];
 
     VRFCoordinatorV2Interface private immutable COORDINATOR;
@@ -126,6 +160,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         Table storage table = tables[msg.sender];
         table.amountBet = msg.value;
         table.player = msg.sender;
+        table.randomOperationStatus = RandomOperationStatus.Waiting;
         tables[msg.sender] = table;
 
         performRandomOperation(RandomOperationAt.StartGame, table);
@@ -133,12 +168,12 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
     // Take another card
     function hit() public inGame {
-        Table storage table = tables[msg.sender];
+        Table memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Hit, table);
     }
 
     function stand() public inGame {
-        Table storage table = tables[msg.sender];
+        Table memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Stand, table);
     }
 
@@ -156,8 +191,8 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         require(success);
     }
 
-    function performRandomOperation(RandomOperationAt _randomOperationAt, Table storage table) private {
-        requestId = COORDINATOR.requestRandomWords(
+    function performRandomOperation(RandomOperationAt _randomOperationAt, Table memory table) private {
+        s_requestId = COORDINATOR.requestRandomWords(
             s_keyHash,
             s_subscriptionId,
             REQUEST_CONFIRMATIONS,
@@ -168,65 +203,90 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         table.randomOperationStatus = RandomOperationStatus.Waiting;
         table.randomOperationAt = _randomOperationAt;
 
-        tablesRequest[requestId] = table;
+        tablesRequest[s_requestId] = table;
         tables[table.player] = table;
     }
 
     function fulfillRandomWords(uint256 _requestId, uint256[] memory randomWords) internal virtual override {
-        Table storage table = tablesRequest[_requestId];
+        Table memory table = tablesRequest[_requestId];
+
+        uint256 amountBet = table.amountBet;
+        address player = table.player;
+        uint256[21] memory emptyArray = EMPTY_ARRAY_21;
 
         ///////////////
         // StartGame //
         ///////////////
         if (table.randomOperationAt == RandomOperationAt.StartGame) {
+            console.log("start game");
             table.amountBet = msg.value;
-            table.dealerCards.push(randomWords[1] % 13);
-            table.playerCards.push(randomWords[2] % 13);
-            table.playerCards.push(randomWords[3] % 13);
+
+            // Player
+            table.playerCards[table.playerCardsNum] = (randomWords[0] % 13) + 1;
+            table.playerCardsNum++;
+
+            table.playerCards[table.playerCardsNum] = (randomWords[1] % 13) + 1;
+            table.playerCardsNum++;
+
+            // Dealer
+            table.dealerCards[table.dealerCardsNum] = (randomWords[2] % 13) + 1;
+            table.dealerCardsNum++;
+
             table.gameState = GameState.InGame;
             table.randomOperationStatus = RandomOperationStatus.NotSended;
-            tables[table.player] = table;
+
+            tables[player] = table;
+
             emit GameStarted();
+            return;
         }
 
         /////////////////
         //    stand    //
         ////////////////
         if (table.randomOperationAt == RandomOperationAt.Stand) {
+            console.log("stand");
             uint256 i = 0;
 
+            emit PlayerStand();
+
             do {
-                table.dealerCards.push(randomWords[i] % 13);
+                table.dealerCards[table.dealerCardsNum] = (randomWords[i] % 13) + 1;
+                table.dealerCardsNum++;
+                i++;
             } while (getTotalValueOfCards(table.dealerCards) <= 16);
 
-            uint256 dealerValue = getTotalValueOfCards(table.dealerCards);
-            uint256 playerValue = getTotalValueOfCards(table.dealerCards);
+            uint256[21] memory dealerCards = table.dealerCards;
+            uint256[21] memory playerCards = table.playerCards;
+            uint256 dealerValue = getTotalValueOfCards(dealerCards);
+            uint256 playerValue = getTotalValueOfCards(playerCards);
 
-            uint256 amountBet = table.amountBet;
-
-            tables[table.player] = Table({
+            tables[player] = Table({
                 gameState: GameState.NotPlaying,
                 randomOperationStatus: RandomOperationStatus.NotSended,
                 randomOperationAt: RandomOperationAt.StartGame,
-                playerCards: new uint256[](0),
-                dealerCards: new uint256[](0),
+                playerCards: emptyArray,
+                playerCardsNum: 0,
+                dealerCards: emptyArray,
+                dealerCardsNum: 0,
                 player: 0x000000000000000000000000000000000000dEaD,
                 amountBet: 0
             });
 
-            emit PlayerStand();
-
             if (dealerValue > 21 || playerValue > dealerValue) {
                 (bool success, ) = msg.sender.call{ value: amountBet * 2 }("");
-                require(success);
+                require(success, "Something goes wrong with call");
                 return;
             }
 
             if (dealerValue == playerValue) {
                 (bool success, ) = msg.sender.call{ value: amountBet }("");
-                require(success);
+                require(success, "Something goes wrong with call");
                 return;
             }
+
+            emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
+            return;
         }
 
         ///////////////
@@ -234,35 +294,50 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         ///////////////
 
         if (table.randomOperationAt == RandomOperationAt.Hit) {
-            table.playerCards.push(randomWords[0] & 13);
+            table.playerCards[table.playerCardsNum] = (randomWords[0] & 13) + 1;
+            table.playerCardsNum++;
+
+            console.log("hit");
+
             uint256 result = getTotalValueOfCards(table.playerCards);
+            console.log(result);
 
             if (result > 21) {
-                delete tables[table.player];
+                uint256[21] memory dealerCards = table.dealerCards;
+                uint256[21] memory playerCards = table.playerCards;
+                uint256 dealerValue = getTotalValueOfCards(dealerCards);
+                uint256 playerValue = getTotalValueOfCards(playerCards);
+
+                tables[player] = Table({
+                    gameState: GameState.NotPlaying,
+                    randomOperationStatus: RandomOperationStatus.NotSended,
+                    randomOperationAt: RandomOperationAt.StartGame,
+                    playerCards: emptyArray,
+                    playerCardsNum: 0,
+                    dealerCards: emptyArray,
+                    dealerCardsNum: 0,
+                    player: 0x000000000000000000000000000000000000dEaD,
+                    amountBet: 0
+                });
+
+                emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
+
                 return;
             }
+
+            tables[player] = table;
+            return;
         }
-
-        tablesRequest[_requestId] = Table({
-            gameState: GameState.NotPlaying,
-            randomOperationStatus: RandomOperationStatus.NotSended,
-            randomOperationAt: RandomOperationAt.StartGame,
-            playerCards: new uint256[](0),
-            dealerCards: new uint256[](0),
-            player: address(0),
-            amountBet: 0
-        });
-
-        emit FullfilCalled();
     }
 
-    function getTotalValueOfCards(uint256[] memory cards) private pure returns (uint256) {
+    function getTotalValueOfCards(uint256[21] memory cards) private view returns (uint256) {
         uint256 result = 0;
         uint256 numberOfAs = 0;
 
-        for (uint256 i = 0; i < cards.length; i++) {
-            result += cards[i];
-            if (cards[i] == 11) {
+        for (uint256 i = 0; i < cards.length && cards[i] != 0; i++) {
+            result += CARDS_VALUE[cards[i]];
+            if (cards[i] == 1) /** AS */
+            {
                 numberOfAs++;
             }
         }
@@ -274,12 +349,12 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         return result;
     }
 
-    function getPlayerCards(address _player) public view returns (uint256[] memory) {
+    function getPlayerCards(address _player) public view returns (uint256[21] memory) {
         Table memory table = tables[_player];
         return table.playerCards;
     }
 
-    function getDealerCards(address _player) public view returns (uint256[] memory) {
+    function getDealerCards(address _player) public view returns (uint256[21] memory) {
         Table memory table = tables[_player];
         return table.dealerCards;
     }

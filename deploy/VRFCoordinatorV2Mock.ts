@@ -10,6 +10,5 @@ export async function deployVRFCoordinatorV2Mock() {
     contract.VRFCoordinatorV2Mock
   )) as VRFCoordinatorV2Mock__factory;
   const VRFCoordinatorV2Mock = await VrfFactory.deploy(BASE_FEE, GAS_PRICE_LINK);
-  await VRFCoordinatorV2Mock.deployed();
   return VRFCoordinatorV2Mock;
 }
