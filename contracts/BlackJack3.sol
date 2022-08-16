@@ -12,6 +12,7 @@ error NotInAGame();
 error InAGame();
 error NotInFirstRound();
 error RandomOperationSended();
+error CallNotSuccess();
 
 contract BlackJack3 is VRFConsumerBaseV2 {
     enum GameState {
@@ -238,7 +239,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             tables[player] = table;
 
             emit GameStarted();
-            return;
         }
 
         /////////////////
@@ -274,19 +274,24 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             });
 
             if (dealerValue > 21 || playerValue > dealerValue) {
-                (bool success, ) = msg.sender.call{ value: amountBet * 2 }("");
-                require(success, "Something goes wrong with call");
-                return;
+                // Player win
+                uint256 amountSend = amountBet * 2;
+                (bool success, ) = player.call{ value: amountSend }("");
+                console.log(success);
+                if (!success) {
+                    revert CallNotSuccess();
+                }
+            } else if (dealerValue == playerValue) {
+                // Draft
+                (bool success, ) = player.call{ value: amountBet }("");
+                if (!success) {
+                    revert CallNotSuccess();
+                }
+                //require(success, "Something goes wrong with call");
+            } else {
+                // Player Lose
+                emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
             }
-
-            if (dealerValue == playerValue) {
-                (bool success, ) = msg.sender.call{ value: amountBet }("");
-                require(success, "Something goes wrong with call");
-                return;
-            }
-
-            emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
-            return;
         }
 
         ///////////////
