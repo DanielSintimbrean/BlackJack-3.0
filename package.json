@@ -26,6 +26,7 @@
     "hardhat": "^2.10.1",
     "hardhat-deploy": "^0.11.12",
     "hardhat-gas-reporter": "^1.0.8",
+    "hardhat-tracer": "^1.1.0-rc.6",
     "prettier": "^2.7.1",
     "prettier-plugin-solidity": "^1.0.0-beta.24",
     "prettierr": "^1.15.3-dev",
