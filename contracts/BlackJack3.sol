@@ -5,8 +5,40 @@ pragma solidity ^0.8.9;
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "hardhat/console.sol";
+import "./BlackJackTable.sol";
 
-//Errors
+//
+//                                                                                 #
+//                                                                                ##=
+//                                                                               ##===
+//                                                                             ###==#===
+//                                                                           ####===##====
+//                                                                         #####====###=====
+//                                                                        #####=====####=====
+//                                                                        #####=====####=====
+//                                                                          ####=  #  #====
+//                                                                                ##=
+//                                                                              ####===
+//
+//      ...     ..            ..                             ..            .                                       ..
+//   .=*8888x <"?88h.   x .d88"                        < .z@8"`        .x88888x.                             < .z@8"`           .x~~"*Weu.              .n~~%x.
+//  X>  '8888H> '8888    5888R                          !@88E         :8**888888X.  :>                        !@88E            d8Nu.  9888c           x88X   888.
+// '88h. `8888   8888    '888R         u           .    '888E   u     f    `888888x./        u           .    '888E   u        88888  98888          X888X   8888L
+// '8888 '8888    "88>    888R      us888u.   .udR88N    888E u@8NL  '       `*88888~     us888u.   .udR88N    888E u@8NL      "***"  9888%         X8888X   88888
+//  `888 '8888.xH888x.    888R   .@88 "8888" <888'888k   888E`"88*"   \.    .  `?)X.   .@88 "8888" <888'888k   888E`"88*"           ..@8*"          88888X   88888X
+//    X" :88*~  `*8888>   888R   9888  9888  9888 'Y"    888E .dN.     `~=-^   X88> ~  9888  9888  9888 'Y"    888E .dN.         ````"8Weu          88888X   88888X
+//  ~"   !"`      "888>   888R   9888  9888  9888        888E~8888            X8888  ~ 9888  9888  9888        888E~8888        ..    ?8888L        88888X   88888f
+//   .H8888h.      ?88    888R   9888  9888  9888        888E '888&           488888   9888  9888  9888        888E '888&     :@88N   '8888N    .   48888X   88888
+//  :"^"88888h.    '!    .888B . 9888  9888  ?8888u../   888E  9888.  .xx.     88888X  9888  9888  ?8888u../   888E  9888.    *8888~  '8888F  .@8c   ?888X   8888"
+//  ^    "88888hx.+"     ^*888%  "888*""888"  "8888P'  '"888*" 4888" '*8888.   '88888> "888*""888"  "8888P'  '"888*" 4888"    '*8"`   9888%  '%888"   "88X   88*`
+//         ^"**""          "%     ^Y"   ^Y'     "P'       ""    ""     88888    '8888>  ^Y"   ^Y'     "P'       ""    ""        `~===*%"`      ^*       ^"==="`
+//                                                                     `8888>    `888
+//                                                                      "8888     8%
+//                                                                       `"888x:-"
+
+//////////////////
+//    Errors    //
+//////////////////
 error InsufficientETH();
 error NotInAGame();
 error InAGame();
@@ -15,47 +47,41 @@ error RandomOperationSended();
 error CallNotSuccess();
 
 contract BlackJack3 is VRFConsumerBaseV2 {
-    enum GameState {
-        NotPlaying,
-        InGame
-    }
-
-    enum RandomOperationAt {
-        StartGame,
-        Hit,
-        Stand
-    }
-
-    enum RandomOperationStatus {
-        NotSended,
-        Waiting
-    }
-
-    struct Table {
-        GameState gameState;
-        RandomOperationStatus randomOperationStatus;
-        RandomOperationAt randomOperationAt;
-        uint256[21] playerCards; // Baraja jugador
-        uint256 playerCardsNum;
-        uint256[21] dealerCards; // Baraja dealer
-        uint256 dealerCardsNum;
-        uint256 amountBet;
-        address player;
-    }
+    //////////////////
+    //    Events    //
+    //////////////////
 
     event GameStarted();
     event PlayerStand();
     event FullfilCalled();
     event PlayerLose(
-        address player,
+        address indexed player,
+        uint256[21] playerCards,
+        uint256 playerCardsValue,
+        uint256[21] dealerCards,
+        uint256 dealerCardsValue
+    );
+    event PlayerDraft(
+        address indexed player,
+        uint256[21] playerCards,
+        uint256 playerCardsValue,
+        uint256[21] dealerCards,
+        uint256 dealerCardsValue
+    );
+    event PlayerWin(
+        address indexed player,
         uint256[21] playerCards,
         uint256 playerCardsValue,
         uint256[21] dealerCards,
         uint256 dealerCardsValue
     );
 
+    /////////////////////
+    //    Modifiers    //
+    ////////////////////
+
     modifier inGame() {
-        Table memory table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
         if (table.gameState == GameState.NotPlaying) {
             revert NotInAGame();
         }
@@ -63,7 +89,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     modifier notInGame() {
-        Table memory table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
         if (table.gameState == GameState.InGame) {
             revert InAGame();
         }
@@ -71,32 +97,28 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     modifier notRandomOperationEmitted() {
-        Table memory table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
         if (table.randomOperationStatus == RandomOperationStatus.Waiting) {
             revert RandomOperationSended();
         }
         _;
     }
 
-    mapping(address => Table) public tables;
-
-    mapping(uint256 => Table) public tablesRequest;
+    /////////////////////
+    //    Constants    //
+    ////////////////////
 
     uint32 private constant CALLBACK_GAS_LIMIT = 10000000;
 
     uint16 public constant REQUEST_CONFIRMATIONS = 3;
 
-    // For this example, retrieve 2 random values in one request.
-    // Cannot exceed VRFCoordinatorV2.MAX_NUM_WORDS.
     uint32 public constant NUM_WORDS = 8;
 
     uint256 public constant MIN_AMOUNT = 100000000000000000; // 0.1 ETH
 
-    uint256 public s_requestId;
-
     uint256[14] private CARDS_VALUE = [
         0, /*  Null*/
-        11, /*   A */
+        11, /*  As */
         2, /*    2 */
         3, /**   3 */
         4, /**   4 */
@@ -134,14 +156,27 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         0 /**  21 */
     ];
 
+    //////////////////////
+    //    Inmutables    //
+    //////////////////////
+
     VRFCoordinatorV2Interface private immutable COORDINATOR;
-    // Your subscription ID.
-    uint64 public immutable s_subscriptionId;
+    uint64 private immutable s_subscriptionId;
 
     // The gas lane to use, which specifies the maximum gas price to bump to.
     // For a list of available gas lanes on each network,
     // see https://docs.chain.link/docs/vrf-contracts/#configurations
     bytes32 private immutable s_keyHash;
+
+    /////////////////////////////
+    //    Public Variables     //
+    ////////////////////////////
+
+    uint256 public s_requestId;
+
+    mapping(address => BlackJackTable) public tables;
+
+    mapping(uint256 => BlackJackTable) public tablesRequest;
 
     constructor(
         uint64 subscriptionId,
@@ -158,7 +193,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             revert InsufficientETH();
         }
 
-        Table storage table = tables[msg.sender];
+        BlackJackTable storage table = tables[msg.sender];
         table.amountBet = msg.value;
         table.player = msg.sender;
         table.randomOperationStatus = RandomOperationStatus.Waiting;
@@ -167,19 +202,19 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         performRandomOperation(RandomOperationAt.StartGame, table);
     }
 
-    // Take another card
+    /////////////
     function hit() public inGame {
-        Table memory table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Hit, table);
     }
 
     function stand() public inGame {
-        Table memory table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Stand, table);
     }
 
     function surrender() public inGame {
-        Table memory table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
 
         if (table.dealerCards.length != 1 || table.playerCards.length != 2) {
             revert NotInFirstRound();
@@ -192,7 +227,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         require(success);
     }
 
-    function performRandomOperation(RandomOperationAt _randomOperationAt, Table memory table) private {
+    function performRandomOperation(RandomOperationAt _randomOperationAt, BlackJackTable memory table) private {
         s_requestId = COORDINATOR.requestRandomWords(
             s_keyHash,
             s_subscriptionId,
@@ -209,7 +244,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     function fulfillRandomWords(uint256 _requestId, uint256[] memory randomWords) internal virtual override {
-        Table memory table = tablesRequest[_requestId];
+        BlackJackTable memory table = tablesRequest[_requestId];
 
         uint256 amountBet = table.amountBet;
         address player = table.player;
@@ -219,7 +254,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         // StartGame //
         ///////////////
         if (table.randomOperationAt == RandomOperationAt.StartGame) {
-            console.log("start game");
             table.amountBet = msg.value;
 
             // Player
@@ -239,13 +273,14 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             tables[player] = table;
 
             emit GameStarted();
+            return;
         }
 
         /////////////////
         //    stand    //
         ////////////////
+
         if (table.randomOperationAt == RandomOperationAt.Stand) {
-            console.log("stand");
             uint256 i = 0;
 
             emit PlayerStand();
@@ -261,7 +296,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             uint256 dealerValue = getTotalValueOfCards(dealerCards);
             uint256 playerValue = getTotalValueOfCards(playerCards);
 
-            tables[player] = Table({
+            tables[player] = BlackJackTable({
                 gameState: GameState.NotPlaying,
                 randomOperationStatus: RandomOperationStatus.NotSended,
                 randomOperationAt: RandomOperationAt.StartGame,
@@ -274,24 +309,22 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             });
 
             if (dealerValue > 21 || playerValue > dealerValue) {
-                // Player win
                 uint256 amountSend = amountBet * 2;
                 (bool success, ) = player.call{ value: amountSend }("");
-                console.log(success);
-                if (!success) {
-                    revert CallNotSuccess();
-                }
+                if (!success) revert CallNotSuccess();
+
+                emit PlayerWin(player, playerCards, playerValue, dealerCards, dealerValue);
+                return;
             } else if (dealerValue == playerValue) {
-                // Draft
                 (bool success, ) = player.call{ value: amountBet }("");
-                if (!success) {
-                    revert CallNotSuccess();
-                }
-                //require(success, "Something goes wrong with call");
-            } else {
-                // Player Lose
-                emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
+                if (!success) revert CallNotSuccess();
+
+                emit PlayerDraft(player, playerCards, playerValue, dealerCards, dealerValue);
+                return;
             }
+            // Player Lose
+            emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
+            return;
         }
 
         ///////////////
@@ -302,10 +335,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             table.playerCards[table.playerCardsNum] = (randomWords[0] & 13) + 1;
             table.playerCardsNum++;
 
-            console.log("hit");
-
             uint256 result = getTotalValueOfCards(table.playerCards);
-            console.log(result);
 
             if (result > 21) {
                 uint256[21] memory dealerCards = table.dealerCards;
@@ -313,7 +343,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
                 uint256 dealerValue = getTotalValueOfCards(dealerCards);
                 uint256 playerValue = getTotalValueOfCards(playerCards);
 
-                tables[player] = Table({
+                tables[player] = BlackJackTable({
                     gameState: GameState.NotPlaying,
                     randomOperationStatus: RandomOperationStatus.NotSended,
                     randomOperationAt: RandomOperationAt.StartGame,
@@ -355,12 +385,12 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     function getPlayerCards(address _player) public view returns (uint256[21] memory) {
-        Table memory table = tables[_player];
+        BlackJackTable memory table = tables[_player];
         return table.playerCards;
     }
 
     function getDealerCards(address _player) public view returns (uint256[21] memory) {
-        Table memory table = tables[_player];
+        BlackJackTable memory table = tables[_player];
         return table.dealerCards;
     }
 }
