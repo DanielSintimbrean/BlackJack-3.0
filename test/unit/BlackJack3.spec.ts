@@ -2,7 +2,8 @@ import { time, loadFixture, mine } from "@nomicfoundation/hardhat-network-helper
 import { expect, assert } from "chai";
 import exp from "constants";
 import { BigNumber } from "ethers";
-import { ethers, network } from "hardhat";
+import { ethers, network, tracer } from "hardhat";
+import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { deployBlackJack3 } from "../../deploy/BlackJack3";
 import { BlackJack3, VRFCoordinatorV2Mock } from "../../typechain-types";
 
@@ -16,14 +17,6 @@ describe("BlackJack3", function () {
     BlackJack3 = deployed.BlackJack3;
     subscriptionId = deployed.subscriptionId;
     VRFCoordinatorV2Mock = deployed.VRFCoordinatorV2Mock;
-  });
-
-  describe("Deployment", function () {
-    it("Shod set the right subscriptionId", async function () {
-      const subId = await BlackJack3.s_subscriptionId();
-
-      expect(subId).to.equal(subscriptionId);
-    });
   });
 
   describe("Playing game", function () {
@@ -43,6 +36,7 @@ describe("BlackJack3", function () {
       if (!VRFCoordinatorV2Mock) {
         this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
         this.skip();
+        return;
       }
 
       const [deployer] = await ethers.getSigners();
@@ -51,7 +45,7 @@ describe("BlackJack3", function () {
       const requestId = await BlackJack3.s_requestId();
 
       await expect(
-        VRFCoordinatorV2Mock?.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 1, 2, 3, 4, 5, 6, 7])
+        VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 1, 2, 3, 4, 5, 6, 7])
       ).to.emit(BlackJack3, "GameStarted");
 
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
@@ -123,11 +117,13 @@ describe("BlackJack3", function () {
 
       mine(10);
 
+      tracer.enabled = true;
       await expect(
         VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 1, 2, 0, 0, 0, 0, 0])
       )
         .to.emit(BlackJack3, "PlayerLose")
-        .withArgs(deployer.address, [], 13, [], 19);
+        .withArgs(deployer.address, [1], 13, [], 19);
+      tracer.enabled = false;
 
       mine(10);
 
