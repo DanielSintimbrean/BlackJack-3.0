@@ -2,6 +2,8 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@nomiclabs/hardhat-solhint";
 import "hardhat-tracer";
+import dotenv from "dotenv";
+dotenv.config();
 
 const config: HardhatUserConfig = {
   defaultNetwork: "hardhat",

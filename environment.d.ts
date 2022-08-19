@@ -1,8 +1,6 @@
 declare global {
   namespace NodeJS {
-    interface ProcessEnv {
-      VRF_SUBSCRIPTION_ID: string;
-    }
+    interface ProcessEnv {}
   }
 }
 
