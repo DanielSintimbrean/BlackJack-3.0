@@ -2,6 +2,7 @@ import { time, loadFixture, mine } from "@nomicfoundation/hardhat-network-helper
 import { expect, assert } from "chai";
 import exp from "constants";
 import { BigNumber } from "ethers";
+import { Interface } from "ethers/lib/utils";
 import { ethers, network, tracer } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { deployBlackJack3 } from "../../deploy/BlackJack3";
@@ -117,14 +118,37 @@ describe("BlackJack3", function () {
 
       mine(10);
 
-      tracer.enabled = true;
-      await expect(
-        VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 1, 2, 0, 0, 0, 0, 0])
-      )
-        .to.emit(BlackJack3, "PlayerLose")
-        .withArgs(deployer.address, [1], 13, [], 19);
-      tracer.enabled = false;
+      const tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
+        requestId,
+        BlackJack3.address,
+        [0, 1, 2, 0, 0, 0, 0, 0]
+      );
 
+      const rc = await tx.wait();
+      const { data, topics } = rc.events![1];
+      const ifaceGood = new Interface([
+        "event PlayerLose(address indexed player, uint256[21] playerCards, uint256 playerCardsValue, uint256[21] dealerCards, uint256 dealerCardsValue)",
+      ]);
+
+      const log = ifaceGood.parseLog({ data, topics });
+      const { player, playerCards: pCards, playerCardsValue, dealerCards: dCards, dealerCardsValue } = log.args;
+
+      // Address
+      expect(player).to.equal(deployer.address);
+
+      // PlayerCards
+      const expectPlayerCards = cardsArray([1, 2]).map((x) => x.toString());
+      expect(expectPlayerCards).to.have.same.members(pCards.map((n: BigNumber) => n.toString()));
+
+      // PlayerCardsValue
+      expect(playerCardsValue).to.equal(13);
+
+      // DealerCards
+      const expectDealerCards = cardsArray([3, 1, 2, 3]).map((x) => x.toString());
+      expect(expectDealerCards).to.have.same.members(dCards.map((n: BigNumber) => n.toString()));
+
+      // DealerCardsValue
+      expect(dealerCardsValue).to.equal(19);
       mine(10);
 
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
@@ -144,9 +168,16 @@ describe("BlackJack3", function () {
         return;
       }
 
-      const [deployer] = await ethers.getSigners();
+      const [deployer, chainLink] = await ethers.getSigners();
+      const initialPlayerBalance = await deployer.getBalance();
+      const initialContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
 
-      await BlackJack3.startGame({ value: ethers.utils.parseEther("1") });
+      VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
+
+      const startGameTx = await BlackJack3.startGame({ value: ethers.utils.parseEther("1") });
+      const startGameRc = await startGameTx.wait();
+      const { gasUsed: gasUsed_startGame, effectiveGasPrice: gasPrice_startGame } = startGameRc;
+      const startGameEthUsed = gasPrice_startGame.mul(gasUsed_startGame);
 
       let requestId = await BlackJack3.s_requestId();
 
@@ -154,7 +185,10 @@ describe("BlackJack3", function () {
         VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 4, 10, 0, 0, 0, 0, 0])
       ).to.emit(BlackJack3, "GameStarted");
 
-      await BlackJack3.hit();
+      const hitTX = await BlackJack3.hit();
+      const hitRc = await hitTX.wait();
+      const { gasUsed: gasUsed_hit, effectiveGasPrice: gasPrice_hit } = hitRc;
+      const hitEthUsed = gasPrice_hit.mul(gasUsed_hit);
 
       requestId = await BlackJack3.s_requestId();
 
@@ -177,19 +211,58 @@ describe("BlackJack3", function () {
       assert.lengthOf(playerCards, 3);
       assert.lengthOf(dealerCards, 1);
 
-      await BlackJack3.stand();
+      const standTx = await BlackJack3.stand();
+      const standRc = await standTx.wait();
+      const { gasUsed: gasUsed_stand, effectiveGasPrice: gasPrice_stand } = standRc;
+      const standEthUsed = gasPrice_stand.mul(gasUsed_stand);
 
       requestId = await BlackJack3.s_requestId();
 
       mine(10);
 
-      await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
+      const tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
         requestId,
         BlackJack3.address,
         [6, 0, 0, 0, 0, 0, 0, 0]
       );
 
+      const rc = await tx.wait();
+      const { data, topics } = rc.events![1];
+      const ifaceGood = new Interface([
+        "event PlayerWin(address indexed player, uint256[21] playerCards, uint256 playerCardsValue, uint256[21] dealerCards, uint256 dealerCardsValue)",
+      ]);
+
+      const log = ifaceGood.parseLog({ data, topics });
+      const { player, playerCards: pCards, playerCardsValue, dealerCards: dCards, dealerCardsValue } = log.args;
+
+      // Address
+      expect(player).to.equal(deployer.address);
+
+      // PlayerCards
+      const expectPlayerCards = cardsArray([1, 5, 5]).map((x) => x.toString());
+      expect(expectPlayerCards).to.have.same.members(pCards.map((n: BigNumber) => n.toString()));
+
+      // PlayerCardsValue
+      expect(playerCardsValue).to.equal(21);
+
+      // DealerCards
+      const expectDealerCards = cardsArray([11, 7]).map((x) => x.toString());
+      expect(expectDealerCards).to.have.same.members(dCards.map((n: BigNumber) => n.toString()));
+
+      // DealerCardsValue
+      expect(dealerCardsValue).to.equal(17);
+
       mine(10);
+
+      const endingPlayerBalance = await deployer.getBalance();
+      const endingContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      const ethGasUsed = standEthUsed.add(hitEthUsed).add(startGameEthUsed);
+      const differencePlayer = endingPlayerBalance.sub(initialPlayerBalance);
+      const differenceContract = endingContractBalance.sub(initialContractBalance);
+
+      expect(differenceContract).to.equal(ethers.utils.parseEther("-1"));
+      expect(differencePlayer).to.equal(ethers.utils.parseEther("1").sub(ethGasUsed));
 
       playerCards = await BlackJack3.getPlayerCards(deployer.address);
       dealerCards = await BlackJack3.getDealerCards(deployer.address);

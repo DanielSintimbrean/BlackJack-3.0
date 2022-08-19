@@ -193,7 +193,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             revert InsufficientETH();
         }
 
-        BlackJackTable storage table = tables[msg.sender];
+        BlackJackTable memory table = tables[msg.sender];
         table.amountBet = msg.value;
         table.player = msg.sender;
         table.randomOperationStatus = RandomOperationStatus.Waiting;
@@ -254,8 +254,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         // StartGame //
         ///////////////
         if (table.randomOperationAt == RandomOperationAt.StartGame) {
-            table.amountBet = msg.value;
-
             // Player
             table.playerCards[table.playerCardsNum] = (randomWords[0] % 13) + 1;
             table.playerCardsNum++;
@@ -310,10 +308,12 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
             if (dealerValue > 21 || playerValue > dealerValue) {
                 uint256 amountSend = amountBet * 2;
+
                 (bool success, ) = player.call{ value: amountSend }("");
                 if (!success) revert CallNotSuccess();
 
                 emit PlayerWin(player, playerCards, playerValue, dealerCards, dealerValue);
+
                 return;
             } else if (dealerValue == playerValue) {
                 (bool success, ) = player.call{ value: amountBet }("");
