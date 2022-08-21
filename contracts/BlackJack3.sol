@@ -6,6 +6,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "hardhat/console.sol";
 import "./BlackJackTable.sol";
+import "./BlackJackErr.sol";
 
 //
 //                                                                                 #
@@ -35,16 +36,6 @@ import "./BlackJackTable.sol";
 //                                                                     `8888>    `888
 //                                                                      "8888     8%
 //                                                                       `"888x:-"
-
-//////////////////
-//    Errors    //
-//////////////////
-error InsufficientETH();
-error NotInAGame();
-error InAGame();
-error NotInFirstRound();
-error RandomOperationSended();
-error CallNotSuccess();
 
 contract BlackJack3 is VRFConsumerBaseV2 {
     //////////////////
@@ -83,7 +74,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     modifier inGame() {
         BlackJackTable memory table = tables[msg.sender];
         if (table.gameState == GameState.NotPlaying) {
-            revert NotInAGame();
+            revert BlackJack3__NotInAGame();
         }
         _;
     }
@@ -91,7 +82,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     modifier notInGame() {
         BlackJackTable memory table = tables[msg.sender];
         if (table.gameState == GameState.InGame) {
-            revert InAGame();
+            revert BlackJack3__InAGame();
         }
         _;
     }
@@ -99,7 +90,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     modifier notRandomOperationEmitted() {
         BlackJackTable memory table = tables[msg.sender];
         if (table.randomOperationStatus == RandomOperationStatus.Waiting) {
-            revert RandomOperationSended();
+            revert BlackJack3__RandomOperationSended();
         }
         _;
     }
@@ -190,7 +181,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
     function startGame() public payable notInGame notRandomOperationEmitted {
         if (msg.value <= MIN_AMOUNT) {
-            revert InsufficientETH();
+            revert BlackJack3__InsufficientETH();
         }
 
         BlackJackTable memory table = tables[msg.sender];
@@ -217,7 +208,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         BlackJackTable memory table = tables[msg.sender];
 
         if (table.dealerCards.length != 1 || table.playerCards.length != 2) {
-            revert NotInFirstRound();
+            revert BlackJack3__NotInFirstRound();
         }
 
         uint256 amountToReturn = table.amountBet / 2;
@@ -310,14 +301,14 @@ contract BlackJack3 is VRFConsumerBaseV2 {
                 uint256 amountSend = amountBet * 2;
 
                 (bool success, ) = player.call{ value: amountSend }("");
-                if (!success) revert CallNotSuccess();
+                if (!success) revert BlackJack3__CallNotSuccess();
 
                 emit PlayerWin(player, playerCards, playerValue, dealerCards, dealerValue);
 
                 return;
             } else if (dealerValue == playerValue) {
                 (bool success, ) = player.call{ value: amountBet }("");
-                if (!success) revert CallNotSuccess();
+                if (!success) revert BlackJack3__CallNotSuccess();
 
                 emit PlayerDraft(player, playerCards, playerValue, dealerCards, dealerValue);
                 return;
