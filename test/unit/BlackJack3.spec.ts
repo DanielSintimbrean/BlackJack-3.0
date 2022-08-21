@@ -20,7 +20,7 @@ describe("BlackJack3", function () {
     VRFCoordinatorV2Mock = deployed.VRFCoordinatorV2Mock;
   });
 
-  describe("Playing game", function () {
+  describe("Validations", function () {
     it("Should request a random word to VRFMock", async function () {
       if (!VRFCoordinatorV2Mock) {
         this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
@@ -68,7 +68,7 @@ describe("BlackJack3", function () {
 
       await expect(BlackJack3.startGame({ value: ethers.utils.parseEther("1") })).to.be.revertedWithCustomError(
         BlackJack3,
-        "RandomOperationSended"
+        "BlackJack3__RandomOperationSended"
       );
     });
 
@@ -91,10 +91,12 @@ describe("BlackJack3", function () {
 
       await expect(BlackJack3.startGame({ value: ethers.utils.parseEther("1") })).to.be.revertedWithCustomError(
         BlackJack3,
-        "InAGame"
+        "BlackJack3__InAGame"
       );
     });
+  });
 
+  describe("Playing game", function () {
     it("Complete a game that the player lose", async function () {
       if (!VRFCoordinatorV2Mock) {
         this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
@@ -102,9 +104,17 @@ describe("BlackJack3", function () {
         return;
       }
 
-      const [deployer] = await ethers.getSigners();
+      const [deployer, chainLink] = await ethers.getSigners();
 
-      await BlackJack3.startGame({ value: ethers.utils.parseEther("1") });
+      const initialPlayerBalance = await deployer.getBalance();
+      const initialContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
+
+      const startGameTx = await BlackJack3.startGame({ value: ethers.utils.parseEther("1") });
+      const startGameRc = await startGameTx.wait();
+      const { gasUsed: gasUsed_startGame, effectiveGasPrice: gasPrice_startGame } = startGameRc;
+      const startGameEthUsed = gasPrice_startGame.mul(gasUsed_startGame);
 
       let requestId = await BlackJack3.s_requestId();
 
@@ -112,7 +122,10 @@ describe("BlackJack3", function () {
         VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 1, 2, 0, 0, 0, 0, 0])
       ).to.emit(BlackJack3, "GameStarted");
 
-      await BlackJack3.stand();
+      const standTx = await BlackJack3.stand();
+      const standRc = await standTx.wait();
+      const { gasUsed: gasUsed_stand, effectiveGasPrice: gasPrice_stand } = standRc;
+      const standEthUsed = gasPrice_stand.mul(gasUsed_stand);
 
       requestId = await BlackJack3.s_requestId();
 
@@ -133,24 +146,26 @@ describe("BlackJack3", function () {
       const log = ifaceGood.parseLog({ data, topics });
       const { player, playerCards: pCards, playerCardsValue, dealerCards: dCards, dealerCardsValue } = log.args;
 
-      // Address
+      // Check Event Arguments
+      //// Address
       expect(player).to.equal(deployer.address);
 
-      // PlayerCards
+      //// PlayerCards
       const expectPlayerCards = cardsArray([1, 2]).map((x) => x.toString());
       expect(expectPlayerCards).to.have.same.members(pCards.map((n: BigNumber) => n.toString()));
 
-      // PlayerCardsValue
+      //// PlayerCardsValue
       expect(playerCardsValue).to.equal(13);
 
-      // DealerCards
+      //// DealerCards
       const expectDealerCards = cardsArray([3, 1, 2, 3]).map((x) => x.toString());
       expect(expectDealerCards).to.have.same.members(dCards.map((n: BigNumber) => n.toString()));
 
-      // DealerCardsValue
+      //// DealerCardsValue
       expect(dealerCardsValue).to.equal(19);
       mine(10);
 
+      // Check reset of the table
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
       let dealerCards = await BlackJack3.getDealerCards(deployer.address);
 
@@ -159,6 +174,18 @@ describe("BlackJack3", function () {
 
       assert.lengthOf(playerCards, 0);
       assert.lengthOf(dealerCards, 0);
+
+      const endingPlayerBalance = await deployer.getBalance();
+      const endingContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      const ethGasUsed = standEthUsed.add(startGameEthUsed);
+      const differencePlayer = endingPlayerBalance.sub(initialPlayerBalance);
+      const differenceContract = endingContractBalance.sub(initialContractBalance);
+
+      // Contract win 1 ETH
+      expect(differenceContract).to.equal(ethers.utils.parseEther("1"));
+      // Player lose 1 ETH
+      expect(differencePlayer).to.equal(ethers.utils.parseEther("-1").sub(ethGasUsed));
     });
 
     it("Complete a game that player win", async function () {
