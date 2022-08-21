@@ -67,7 +67,8 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         uint256 dealerCardsValue
     );
 
-    event FulFillCalled(uint256 requestId);
+    event RandomOperationResponse(uint256 indexed requestId, RandomOperationAt randomOperationAt, address player);
+    event RandomOperationRequest(uint256 indexed requestId, RandomOperationAt randomOperationAt, address player);
 
     /////////////////////
     //    Modifiers    //
@@ -125,29 +126,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         10, /**  Q */
         10 /**   K */
     ];
-    uint256[21] private EMPTY_ARRAY_21 = [
-        0, /**  1 */
-        0, /**  2 */
-        0, /**  3 */
-        0, /**  4 */
-        0, /**  5 */
-        0, /**  6 */
-        0, /**  7 */
-        0, /**  8 */
-        0, /**  9 */
-        0, /** 10 */
-        0, /** 11 */
-        0, /** 12 */
-        0, /** 13 */
-        0, /** 14 */
-        0, /** 15 */
-        0, /** 16 */
-        0, /** 17 */
-        0, /** 18 */
-        0, /** 19 */
-        0, /** 20 */
-        0 /**  21 */
-    ];
 
     //////////////////////
     //    Inmutables    //
@@ -164,8 +142,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     /////////////////////////////
     //    Public Variables     //
     ////////////////////////////
-
-    uint256 public s_requestId;
 
     mapping(address => BlackJackTable) public tables;
 
@@ -221,7 +197,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     function performRandomOperation(RandomOperationAt _randomOperationAt, BlackJackTable memory table) private {
-        s_requestId = COORDINATOR.requestRandomWords(
+        uint256 requestId = COORDINATOR.requestRandomWords(
             s_keyHash,
             s_subscriptionId,
             REQUEST_CONFIRMATIONS,
@@ -232,8 +208,10 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         table.randomOperationStatus = RandomOperationStatus.Waiting;
         table.randomOperationAt = _randomOperationAt;
 
-        tablesRequest[s_requestId] = table;
+        tablesRequest[requestId] = table;
         tables[table.player] = table;
+
+        emit RandomOperationRequest(requestId, _randomOperationAt, msg.sender);
     }
 
     function fulfillRandomWords(uint256 _requestId, uint256[] memory randomWords) internal virtual override {
@@ -241,9 +219,9 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
         uint256 amountBet = table.amountBet;
         address player = table.player;
-        uint256[21] memory emptyArray = EMPTY_ARRAY_21;
+        uint256[21] memory emptyArray;
 
-        emit FulFillCalled(_requestId);
+        emit RandomOperationResponse(_requestId, table.randomOperationAt, player);
 
         ///////////////
         // StartGame //
@@ -310,14 +288,17 @@ contract BlackJack3 is VRFConsumerBaseV2 {
                 emit PlayerWin(player, playerCards, playerValue, dealerCards, dealerValue);
 
                 return;
-            } else if (dealerValue == playerValue) {
+            }
+
+            if (dealerValue == playerValue) {
                 (bool success, ) = player.call{ value: amountBet }("");
                 if (!success) revert BlackJack3__CallNotSuccess();
 
                 emit PlayerDraft(player, playerCards, playerValue, dealerCards, dealerValue);
+
                 return;
             }
-            // Player Lose
+
             emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
             return;
         }
