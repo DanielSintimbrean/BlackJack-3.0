@@ -42,9 +42,9 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     //    Events    //
     //////////////////
 
-    event GameStarted();
-    event PlayerStand();
-    event FullfilCalled();
+    event GameStarted(address indexed player);
+    event PlayerStand(address indexed player);
+    event PlayerHit(address indexed player, uint256 newCard);
     event PlayerLose(
         address indexed player,
         uint256[21] playerCards,
@@ -66,6 +66,8 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         uint256[21] dealerCards,
         uint256 dealerCardsValue
     );
+
+    event FulFillCalled(uint256 requestId);
 
     /////////////////////
     //    Modifiers    //
@@ -241,6 +243,8 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         address player = table.player;
         uint256[21] memory emptyArray = EMPTY_ARRAY_21;
 
+        emit FulFillCalled(_requestId);
+
         ///////////////
         // StartGame //
         ///////////////
@@ -261,7 +265,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
             tables[player] = table;
 
-            emit GameStarted();
+            emit GameStarted(player);
             return;
         }
 
@@ -272,7 +276,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         if (table.randomOperationAt == RandomOperationAt.Stand) {
             uint256 i = 0;
 
-            emit PlayerStand();
+            emit PlayerStand(player);
 
             do {
                 table.dealerCards[table.dealerCardsNum] = (randomWords[i] % 13) + 1;
@@ -323,10 +327,13 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         ///////////////
 
         if (table.randomOperationAt == RandomOperationAt.Hit) {
-            table.playerCards[table.playerCardsNum] = (randomWords[0] & 13) + 1;
+            uint256 newCard = (randomWords[0] & 13) + 1;
+            table.playerCards[table.playerCardsNum] = newCard;
             table.playerCardsNum++;
 
             uint256 result = getTotalValueOfCards(table.playerCards);
+
+            emit PlayerHit(player, newCard);
 
             if (result > 21) {
                 uint256[21] memory dealerCards = table.dealerCards;
