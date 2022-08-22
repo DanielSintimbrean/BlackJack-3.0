@@ -1,7 +1,7 @@
 import { loadFixture, mine } from "@nomicfoundation/hardhat-network-helpers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect, assert } from "chai";
-import { BigNumber } from "ethers";
+import { BigNumber, BigNumberish, ContractTransaction } from "ethers";
 import { Interface } from "ethers/lib/utils";
 import { ethers, network, tracer } from "hardhat";
 import { deployBlackJack3 } from "../../deploy/BlackJack3";
@@ -43,13 +43,7 @@ describe("BlackJack3", function () {
 
       VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
 
-      const { requestId } = await BlackJack3__startGame(BlackJack3);
-
-      await expect(
-        VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, [0, 1, 2, 3, 4, 5, 6, 7])
-      )
-        .to.emit(BlackJack3, "GameStarted")
-        .withArgs(deployer.address);
+      await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock, [0, 1, 2, 3, 4, 5, 6, 7]);
 
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
       let dealerCards = await BlackJack3.getDealerCards(deployer.address);
@@ -81,13 +75,7 @@ describe("BlackJack3", function () {
         return;
       }
 
-      const { requestId } = await BlackJack3__startGame(BlackJack3);
-
-      // simulate callback from the oracle network
-      await expect(VRFCoordinatorV2Mock.fulfillRandomWords(requestId, BlackJack3.address)).to.emit(
-        BlackJack3,
-        "GameStarted"
-      );
+      await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock);
 
       await expect(BlackJack3.startGame({ value: ethers.utils.parseEther("1") })).to.be.revertedWithCustomError(
         BlackJack3,
@@ -111,19 +99,13 @@ describe("BlackJack3", function () {
 
       VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
 
-      const { requestId: startGameRequestId, gasCost: startGameEthUsed } = await BlackJack3__startGame(BlackJack3);
-
-      await expect(
-        VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
-          startGameRequestId,
-          BlackJack3.address,
-          [0, 1, 2, 0, 0, 0, 0, 0]
-        )
-      ).to.emit(BlackJack3, "GameStarted");
+      const { gasCost: startGameEthUsed } = await BlackJack3__startGame(
+        BlackJack3,
+        VRFCoordinatorV2Mock,
+        [0, 1, 2, 0, 0, 0, 0, 0]
+      );
 
       const { requestId: standRequestId, gasCost: standEthUsed } = await BlackJack3__stand(BlackJack3);
-
-      mine(10);
 
       const tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
         standRequestId,
@@ -186,27 +168,19 @@ describe("BlackJack3", function () {
 
       VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
 
-      const { requestId: startGameRequestId, gasCost: startGameEthUsed } = await BlackJack3__startGame(BlackJack3);
-
-      await expect(
-        VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
-          startGameRequestId,
-          BlackJack3.address,
-          [0, 4, 10, 0, 0, 0, 0, 0]
-        )
-      ).to.emit(BlackJack3, "GameStarted");
+      const { gasCost: startGameEthUsed } = await BlackJack3__startGame(
+        BlackJack3,
+        VRFCoordinatorV2Mock,
+        [0, 4, 10, 0, 0, 0, 0, 0]
+      );
 
       const { requestId: hitRequestId, gasCost: hitEthUsed } = await BlackJack3__hit(BlackJack3);
-
-      mine(10);
 
       await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
         hitRequestId,
         BlackJack3.address,
         [4, 0, 0, 0, 0, 0, 0, 0]
       );
-
-      mine(10);
 
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
       let dealerCards = await BlackJack3.getDealerCards(deployer.address);
@@ -216,8 +190,6 @@ describe("BlackJack3", function () {
 
       assert.lengthOf(playerCards, 3);
       assert.lengthOf(dealerCards, 1);
-
-      mine(10);
 
       const { requestId: standRequestId, gasCost: standEthUsed } = await BlackJack3__stand(BlackJack3);
 
@@ -303,26 +275,42 @@ function cardsArray(array: number[]): BigNumber[] {
   return result;
 }
 
-async function BlackJack3__startGame(BlackJack3: BlackJack3, value: BigNumber = ethers.utils.parseEther("1")) {
+async function BlackJack3__startGame(
+  BlackJack3: BlackJack3,
+  VRFCoordinatorV2Mock: VRFCoordinatorV2Mock,
+  cardsToReturn: BigNumberish[] = [0, 0, 0, 0, 0, 0, 0, 0],
+  value: BigNumber = ethers.utils.parseEther("1")
+) {
   const startGameTx = await BlackJack3.startGame({ value });
   const startGameRc = await startGameTx.wait();
 
-  const { requestId } = startGameRc.events![1].args!;
+  const { requestId, randomOperationAt } = startGameRc.events!.find((e) => e.event == "RandomOperationRequest")!.args!;
 
   const { gasUsed, effectiveGasPrice } = startGameRc;
   const gasCost = gasUsed.mul(effectiveGasPrice);
 
-  return { requestId, gasCost };
+  expect(randomOperationAt).to.equal(RandomOperationAt.startGame);
+
+  let tx: Promise<ContractTransaction>;
+  await expect(
+    (tx = VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, cardsToReturn))
+  ).to.emit(BlackJack3, "GameStarted");
+
+  let vrfReceipt = await (await tx).wait();
+
+  return { requestId, gasCost, vrfReceipt };
 }
 
 async function BlackJack3__hit(BlackJack3: BlackJack3) {
   const hitTx = await BlackJack3.hit();
   const hitRc = await hitTx.wait();
 
-  const { requestId } = hitRc.events![1].args!;
+  const { requestId, randomOperationAt } = hitRc.events!.find((e) => e.event == "RandomOperationRequest")!.args!;
 
   const { gasUsed, effectiveGasPrice } = hitRc;
   const gasCost = gasUsed.mul(effectiveGasPrice);
+
+  expect(randomOperationAt).to.equal(RandomOperationAt.hit);
 
   return { requestId, gasCost };
 }
@@ -331,10 +319,18 @@ async function BlackJack3__stand(BlackJack3: BlackJack3) {
   const standTx = await BlackJack3.stand();
   const standRc = await standTx.wait();
 
-  const { requestId } = standRc.events![1].args!;
+  const { requestId, randomOperationAt } = standRc.events?.find((e) => e.event == "RandomOperationRequest")!.args!;
 
   const { gasUsed, effectiveGasPrice } = standRc;
   const gasCost = gasUsed.mul(effectiveGasPrice);
 
+  expect(randomOperationAt).to.equal(RandomOperationAt.stand);
+
   return { requestId, gasCost };
 }
+
+const RandomOperationAt = {
+  startGame: 0,
+  hit: 1,
+  stand: 2,
+};

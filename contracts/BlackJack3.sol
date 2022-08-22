@@ -42,7 +42,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     //    Events    //
     //////////////////
 
-    event GameStarted(address indexed player);
+    event GameStarted(address indexed player, uint256 playerCard_1, uint256 playerCard_2, uint256 dealerCard);
     event PlayerStand(address indexed player);
     event PlayerHit(address indexed player, uint256 newCard);
     event PlayerLose(
@@ -66,7 +66,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         uint256[21] dealerCards,
         uint256 dealerCardsValue
     );
-
     event RandomOperationResponse(uint256 indexed requestId, RandomOperationAt randomOperationAt, address player);
     event RandomOperationRequest(uint256 indexed requestId, RandomOperationAt randomOperationAt, address player);
 
@@ -171,7 +170,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         performRandomOperation(RandomOperationAt.StartGame, table);
     }
 
-    /////////////
     function hit() public inGame {
         BlackJackTable memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Hit, table);
@@ -219,7 +217,6 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
         uint256 amountBet = table.amountBet;
         address player = table.player;
-        uint256[21] memory emptyArray;
 
         emit RandomOperationResponse(_requestId, table.randomOperationAt, player);
 
@@ -243,7 +240,12 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
             tables[player] = table;
 
-            emit GameStarted(player);
+            emit GameStarted(
+                player,
+                table.playerCards[table.playerCardsNum - 2],
+                table.playerCards[table.playerCardsNum - 1],
+                table.dealerCards[table.dealerCardsNum - 1]
+            );
             return;
         }
 
@@ -267,17 +269,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             uint256 dealerValue = getTotalValueOfCards(dealerCards);
             uint256 playerValue = getTotalValueOfCards(playerCards);
 
-            tables[player] = BlackJackTable({
-                gameState: GameState.NotPlaying,
-                randomOperationStatus: RandomOperationStatus.NotSended,
-                randomOperationAt: RandomOperationAt.StartGame,
-                playerCards: emptyArray,
-                playerCardsNum: 0,
-                dealerCards: emptyArray,
-                dealerCardsNum: 0,
-                player: 0x000000000000000000000000000000000000dEaD,
-                amountBet: 0
-            });
+            delete tables[player];
 
             if (dealerValue > 21 || playerValue > dealerValue) {
                 uint256 amountSend = amountBet * 2;
@@ -322,17 +314,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
                 uint256 dealerValue = getTotalValueOfCards(dealerCards);
                 uint256 playerValue = getTotalValueOfCards(playerCards);
 
-                tables[player] = BlackJackTable({
-                    gameState: GameState.NotPlaying,
-                    randomOperationStatus: RandomOperationStatus.NotSended,
-                    randomOperationAt: RandomOperationAt.StartGame,
-                    playerCards: emptyArray,
-                    playerCardsNum: 0,
-                    dealerCards: emptyArray,
-                    dealerCardsNum: 0,
-                    player: 0x000000000000000000000000000000000000dEaD,
-                    amountBet: 0
-                });
+                delete tables[player];
 
                 emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
 
