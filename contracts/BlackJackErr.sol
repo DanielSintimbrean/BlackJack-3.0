@@ -11,3 +11,4 @@ error BlackJack3__InAGame();
 error BlackJack3__NotInFirstRound();
 error BlackJack3__RandomOperationSended();
 error BlackJack3__CallNotSuccess();
+error BlackJack3__InvalidRandomOperation();

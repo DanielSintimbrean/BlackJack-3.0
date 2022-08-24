@@ -123,19 +123,19 @@ describe("BlackJack3", function () {
       const { player, playerCards: pCards, playerCardsValue, dealerCards: dCards, dealerCardsValue } = log.args;
 
       // Check Event Arguments
-      //// Address
+      /// Address
       expect(player).to.equal(deployer.address);
 
-      //// PlayerCards
+      /// PlayerCards
       expectedCards([1, 2], pCards);
 
-      //// PlayerCardsValue
+      /// PlayerCardsValue
       expect(playerCardsValue).to.equal(13);
 
-      //// DealerCards
+      /// DealerCards
       expectedCards([3, 1, 2, 3], dCards);
 
-      //// DealerCardsValue
+      /// DealerCardsValue
       expect(dealerCardsValue).to.equal(19);
       mine(10);
 

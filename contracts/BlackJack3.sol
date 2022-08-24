@@ -101,13 +101,13 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     //    Constants    //
     ////////////////////
 
-    uint32 private constant CALLBACK_GAS_LIMIT = 10000000;
+    uint32 private constant CALLBACK_GAS_LIMIT = 2500000;
 
-    uint16 public constant REQUEST_CONFIRMATIONS = 3;
+    uint16 private constant REQUEST_CONFIRMATIONS = 3;
 
-    uint32 public constant NUM_WORDS = 8;
+    uint32 private constant NUM_WORDS = 8;
 
-    uint256 public constant MIN_AMOUNT = 100000000000000000; // 0.1 ETH
+    uint256 public constant MIN_AMOUNT = 10000000000000000; // 0.01 ETH
 
     uint256[14] private CARDS_VALUE = [
         0, /*  Null*/
@@ -146,6 +146,9 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
     mapping(uint256 => BlackJackTable) public tablesRequest;
 
+    /////////////////////////////
+    //    Constructor         //
+    ////////////////////////////
     constructor(
         uint64 subscriptionId,
         address vrfCoordinator,
@@ -156,8 +159,11 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         s_subscriptionId = subscriptionId;
     }
 
+    /**
+     * @notice startGame
+     */
     function startGame() public payable notInGame notRandomOperationEmitted {
-        if (msg.value <= MIN_AMOUNT) {
+        if (msg.value < MIN_AMOUNT) {
             revert BlackJack3__InsufficientETH();
         }
 
@@ -170,16 +176,25 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         performRandomOperation(RandomOperationAt.StartGame, table);
     }
 
+    /**
+     * @notice hit
+     */
     function hit() public inGame {
         BlackJackTable memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Hit, table);
     }
 
+    /**
+     * @notice stand
+     */
     function stand() public inGame {
         BlackJackTable memory table = tables[msg.sender];
         performRandomOperation(RandomOperationAt.Stand, table);
     }
 
+    /**
+     * @notice stand
+     */
     function surrender() public inGame {
         BlackJackTable memory table = tables[msg.sender];
 
@@ -194,6 +209,9 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         require(success);
     }
 
+    /**
+     * @notice performRandomOperation send to ChainLink Coordinator a request of random words
+     */
     function performRandomOperation(RandomOperationAt _randomOperationAt, BlackJackTable memory table) private {
         uint256 requestId = COORDINATOR.requestRandomWords(
             s_keyHash,
@@ -212,7 +230,21 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         emit RandomOperationRequest(requestId, _randomOperationAt, msg.sender);
     }
 
-    function fulfillRandomWords(uint256 _requestId, uint256[] memory randomWords) internal virtual override {
+    /**
+     * @notice fulfillRandomness handles the VRF response. Your contract must
+     * @notice implement it. See "SECURITY CONSIDERATIONS" above for important
+     * @notice principles to keep in mind when implementing your fulfillRandomness
+     * @notice method.
+     *
+     * @dev VRFConsumerBaseV2 expects its subcontracts to have a method with this
+     * @dev signature, and will call it once it has verified the proof
+     * @dev associated with the randomness. (It is triggered via a call to
+     * @dev rawFulfillRandomness, below.)
+     *
+     * @param _requestId The Id initially returned by requestRandomness
+     * @param _randomWords the VRF output expanded to the requested number of words
+     */
+    function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal virtual override {
         BlackJackTable memory table = tablesRequest[_requestId];
 
         uint256 amountBet = table.amountBet;
@@ -225,14 +257,14 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         ///////////////
         if (table.randomOperationAt == RandomOperationAt.StartGame) {
             // Player
-            table.playerCards[table.playerCardsNum] = (randomWords[0] % 13) + 1;
+            table.playerCards[table.playerCardsNum] = (_randomWords[0] % 13) + 1;
             table.playerCardsNum++;
 
-            table.playerCards[table.playerCardsNum] = (randomWords[1] % 13) + 1;
+            table.playerCards[table.playerCardsNum] = (_randomWords[1] % 13) + 1;
             table.playerCardsNum++;
 
             // Dealer
-            table.dealerCards[table.dealerCardsNum] = (randomWords[2] % 13) + 1;
+            table.dealerCards[table.dealerCardsNum] = (_randomWords[2] % 13) + 1;
             table.dealerCardsNum++;
 
             table.gameState = GameState.InGame;
@@ -259,7 +291,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             emit PlayerStand(player);
 
             do {
-                table.dealerCards[table.dealerCardsNum] = (randomWords[i] % 13) + 1;
+                table.dealerCards[table.dealerCardsNum] = (_randomWords[i] % 13) + 1;
                 table.dealerCardsNum++;
                 i++;
             } while (getTotalValueOfCards(table.dealerCards) <= 16);
@@ -300,7 +332,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         ///////////////
 
         if (table.randomOperationAt == RandomOperationAt.Hit) {
-            uint256 newCard = (randomWords[0] & 13) + 1;
+            uint256 newCard = (_randomWords[0] & 13) + 1;
             table.playerCards[table.playerCardsNum] = newCard;
             table.playerCardsNum++;
 
@@ -324,6 +356,8 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             tables[player] = table;
             return;
         }
+
+        revert BlackJack3__InvalidRandomOperation();
     }
 
     function getTotalValueOfCards(uint256[21] memory cards) private view returns (uint256) {
