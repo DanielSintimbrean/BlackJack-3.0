@@ -42,29 +42,29 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     //    Events    //
     //////////////////
 
-    event GameStarted(address indexed player, uint256 playerCard_1, uint256 playerCard_2, uint256 dealerCard);
+    event GameStarted(address indexed player, uint16 playerCard_1, uint16 playerCard_2, uint16 dealerCard);
     event PlayerStand(address indexed player);
-    event PlayerHit(address indexed player, uint256 newCard);
+    event PlayerHit(address indexed player, uint16 newCard);
     event PlayerLose(
         address indexed player,
-        uint256[21] playerCards,
-        uint256 playerCardsValue,
-        uint256[21] dealerCards,
-        uint256 dealerCardsValue
+        uint16[21] playerCards,
+        uint16 playerCardsValue,
+        uint16[21] dealerCards,
+        uint16 dealerCardsValue
     );
     event PlayerDraft(
         address indexed player,
-        uint256[21] playerCards,
-        uint256 playerCardsValue,
-        uint256[21] dealerCards,
-        uint256 dealerCardsValue
+        uint16[21] playerCards,
+        uint16 playerCardsValue,
+        uint16[21] dealerCards,
+        uint16 dealerCardsValue
     );
     event PlayerWin(
         address indexed player,
-        uint256[21] playerCards,
-        uint256 playerCardsValue,
-        uint256[21] dealerCards,
-        uint256 dealerCardsValue
+        uint16[21] playerCards,
+        uint16 playerCardsValue,
+        uint16[21] dealerCards,
+        uint16 dealerCardsValue
     );
     event RandomOperationResponse(uint256 indexed requestId, RandomOperationAt randomOperationAt, address player);
     event RandomOperationRequest(uint256 indexed requestId, RandomOperationAt randomOperationAt, address player);
@@ -109,7 +109,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
     uint256 public constant MIN_AMOUNT = 10000000000000000; // 0.01 ETH
 
-    uint256[14] private CARDS_VALUE = [
+    uint16[14] private CARDS_VALUE = [
         0, /*  Null*/
         11, /*  As */
         2, /*    2 */
@@ -133,18 +133,15 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     VRFCoordinatorV2Interface private immutable COORDINATOR;
     uint64 private immutable s_subscriptionId;
 
-    // The gas lane to use, which specifies the maximum gas price to bump to.
-    // For a list of available gas lanes on each network,
-    // see https://docs.chain.link/docs/vrf-contracts/#configurations
     bytes32 private immutable s_keyHash;
 
     /////////////////////////////
     //    Public Variables     //
     ////////////////////////////
 
-    mapping(address => BlackJackTable) public tables;
+    mapping(uint256 => BlackJackTable) private tablesRequest;
 
-    mapping(uint256 => BlackJackTable) public tablesRequest;
+    mapping(address => BlackJackTable) public tables;
 
     /////////////////////////////
     //    Constructor         //
@@ -257,14 +254,14 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         ///////////////
         if (table.randomOperationAt == RandomOperationAt.StartGame) {
             // Player
-            table.playerCards[table.playerCardsNum] = (_randomWords[0] % 13) + 1;
+            table.playerCards[table.playerCardsNum] = uint16((_randomWords[0] % 13) + 1);
             table.playerCardsNum++;
 
-            table.playerCards[table.playerCardsNum] = (_randomWords[1] % 13) + 1;
+            table.playerCards[table.playerCardsNum] = uint16((_randomWords[1] % 13) + 1);
             table.playerCardsNum++;
 
             // Dealer
-            table.dealerCards[table.dealerCardsNum] = (_randomWords[2] % 13) + 1;
+            table.dealerCards[table.dealerCardsNum] = uint16((_randomWords[2] % 13) + 1);
             table.dealerCardsNum++;
 
             table.gameState = GameState.InGame;
@@ -291,15 +288,15 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             emit PlayerStand(player);
 
             do {
-                table.dealerCards[table.dealerCardsNum] = (_randomWords[i] % 13) + 1;
+                table.dealerCards[table.dealerCardsNum] = uint16((_randomWords[i] % 13) + 1);
                 table.dealerCardsNum++;
                 i++;
             } while (getTotalValueOfCards(table.dealerCards) <= 16);
 
-            uint256[21] memory dealerCards = table.dealerCards;
-            uint256[21] memory playerCards = table.playerCards;
-            uint256 dealerValue = getTotalValueOfCards(dealerCards);
-            uint256 playerValue = getTotalValueOfCards(playerCards);
+            uint16[21] memory dealerCards = table.dealerCards;
+            uint16[21] memory playerCards = table.playerCards;
+            uint16 dealerValue = getTotalValueOfCards(dealerCards);
+            uint16 playerValue = getTotalValueOfCards(playerCards);
 
             delete tables[player];
 
@@ -332,7 +329,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         ///////////////
 
         if (table.randomOperationAt == RandomOperationAt.Hit) {
-            uint256 newCard = (_randomWords[0] & 13) + 1;
+            uint16 newCard = uint16((_randomWords[0] & 13) + 1);
             table.playerCards[table.playerCardsNum] = newCard;
             table.playerCardsNum++;
 
@@ -341,10 +338,10 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             emit PlayerHit(player, newCard);
 
             if (result > 21) {
-                uint256[21] memory dealerCards = table.dealerCards;
-                uint256[21] memory playerCards = table.playerCards;
-                uint256 dealerValue = getTotalValueOfCards(dealerCards);
-                uint256 playerValue = getTotalValueOfCards(playerCards);
+                uint16[21] memory dealerCards = table.dealerCards;
+                uint16[21] memory playerCards = table.playerCards;
+                uint16 dealerValue = getTotalValueOfCards(dealerCards);
+                uint16 playerValue = getTotalValueOfCards(playerCards);
 
                 delete tables[player];
 
@@ -360,11 +357,11 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         revert BlackJack3__InvalidRandomOperation();
     }
 
-    function getTotalValueOfCards(uint256[21] memory cards) private view returns (uint256) {
-        uint256 result = 0;
-        uint256 numberOfAs = 0;
+    function getTotalValueOfCards(uint16[21] memory cards) private view returns (uint16) {
+        uint16 result = 0;
+        uint16 numberOfAs = 0;
 
-        for (uint256 i = 0; i < cards.length && cards[i] != 0; i++) {
+        for (uint16 i = 0; i < cards.length && cards[i] != 0; i++) {
             result += CARDS_VALUE[cards[i]];
             if (cards[i] == 1) /** AS */
             {
@@ -372,19 +369,19 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             }
         }
 
-        for (uint256 j = 0; j < numberOfAs && result > 21; j++) {
+        for (uint16 j = 0; j < numberOfAs && result > 21; j++) {
             result -= 10;
         }
 
         return result;
     }
 
-    function getPlayerCards(address _player) public view returns (uint256[21] memory) {
+    function getPlayerCards(address _player) public view returns (uint16[21] memory) {
         BlackJackTable memory table = tables[_player];
         return table.playerCards;
     }
 
-    function getDealerCards(address _player) public view returns (uint256[21] memory) {
+    function getDealerCards(address _player) public view returns (uint16[21] memory) {
         BlackJackTable memory table = tables[_player];
         return table.dealerCards;
     }

@@ -20,10 +20,10 @@ struct BlackJackTable {
     GameState gameState;
     RandomOperationStatus randomOperationStatus;
     RandomOperationAt randomOperationAt;
-    uint256[21] playerCards; // Baraja jugador
-    uint256 playerCardsNum;
-    uint256[21] dealerCards; // Baraja dealer
-    uint256 dealerCardsNum;
+    uint16[21] playerCards; // Baraja jugador
+    uint16 playerCardsNum;
+    uint16[21] dealerCards; // Baraja dealer
+    uint16 dealerCardsNum;
     uint256 amountBet;
     address player;
 }

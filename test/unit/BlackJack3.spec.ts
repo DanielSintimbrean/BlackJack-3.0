@@ -48,15 +48,15 @@ describe("BlackJack3", function () {
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
       let dealerCards = await BlackJack3.getDealerCards(deployer.address);
 
-      playerCards = playerCards.filter((n) => !n.eq(0));
-      dealerCards = dealerCards.filter((n) => !n.eq(0));
+      playerCards = playerCards.filter((n) => n.toString() != "0");
+      dealerCards = dealerCards.filter((n) => n.toString() != "0");
 
       assert.lengthOf(playerCards, 2);
       assert.lengthOf(dealerCards, 1);
 
-      expect(playerCards[0]).to.eq("1");
-      expect(playerCards[1]).to.eq("2");
-      expect(dealerCards[0]).to.eq("3");
+      expect(playerCards[0].toString()).to.eq("1");
+      expect(playerCards[1].toString()).to.eq("2");
+      expect(dealerCards[0].toString()).to.eq("3");
     });
 
     it("Can not send 'startGame' twice ", async function () {
@@ -116,7 +116,7 @@ describe("BlackJack3", function () {
       const rc = await tx.wait();
       const { data, topics } = rc.events![2];
       const IPlayerLose = new Interface([
-        "event PlayerLose(address indexed player, uint256[21] playerCards, uint256 playerCardsValue, uint256[21] dealerCards, uint256 dealerCardsValue)",
+        "event PlayerLose(address indexed player, uint16[21] playerCards, uint16 playerCardsValue, uint16[21] dealerCards, uint16 dealerCardsValue)",
       ]);
 
       const log = IPlayerLose.parseLog({ data, topics });
@@ -185,8 +185,8 @@ describe("BlackJack3", function () {
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
       let dealerCards = await BlackJack3.getDealerCards(deployer.address);
 
-      playerCards = playerCards.filter((n) => !n.eq(0));
-      dealerCards = dealerCards.filter((n) => !n.eq(0));
+      playerCards = playerCards.filter((n) => n.toString() != "0");
+      dealerCards = dealerCards.filter((n) => n.toString() != "0");
 
       assert.lengthOf(playerCards, 3);
       assert.lengthOf(dealerCards, 1);
@@ -202,7 +202,7 @@ describe("BlackJack3", function () {
       const rc = await tx.wait();
       const { data, topics } = rc.events![2];
       const IPlayerGood = new Interface([
-        "event PlayerWin(address indexed player, uint256[21] playerCards, uint256 playerCardsValue, uint256[21] dealerCards, uint256 dealerCardsValue)",
+        "event PlayerWin(address indexed player, uint16[21] playerCards, uint16 playerCardsValue, uint16[21] dealerCards, uint16 dealerCardsValue)",
       ]);
 
       const log = IPlayerGood.parseLog({ data, topics });
@@ -255,8 +255,8 @@ async function checkIfTableIsReset(BlackJack3: BlackJack3, deployer: SignerWithA
   let playerCards = await BlackJack3.getPlayerCards(deployer.address);
   let dealerCards = await BlackJack3.getDealerCards(deployer.address);
 
-  playerCards = playerCards.filter((n) => !n.eq(0));
-  dealerCards = dealerCards.filter((n) => !n.eq(0));
+  playerCards = playerCards.filter((n) => n.toString() != "0");
+  dealerCards = dealerCards.filter((n) => n.toString() != "0");
 
   assert.lengthOf(playerCards, 0);
   assert.lengthOf(dealerCards, 0);
