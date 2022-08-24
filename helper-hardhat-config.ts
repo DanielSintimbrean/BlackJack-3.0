@@ -1,22 +1,22 @@
-import { BigNumber } from "ethers"
+import { BigNumber } from "ethers";
 
 type NetworkConfigItem = {
-  name: string
-  fundAmount: BigNumber
-  fee?: string
-  keyHash?: string
-  interval?: string
-  linkToken?: string
-  vrfCoordinator?: string
-  keepersUpdateInterval?: string
-  oracle?: string
-  jobId?: string
-  ethUsdPriceFeed?: string
-}
+  name: string;
+  fundAmount: BigNumber;
+  fee?: string;
+  keyHash?: string;
+  interval?: string;
+  linkToken?: string;
+  vrfCoordinator?: string;
+  keepersUpdateInterval?: string;
+  oracle?: string;
+  jobId?: string;
+  ethUsdPriceFeed?: string;
+};
 
 type NetworkConfigMap = {
-  [chainId: string]: NetworkConfigItem
-}
+  [chainId: string]: NetworkConfigItem;
+};
 
 export const networkConfig: NetworkConfigMap = {
   default: {
@@ -50,7 +50,7 @@ export const networkConfig: NetworkConfigMap = {
     name: "rinkeby",
     linkToken: "0x01be23585060835e02b77ef475b0cc51aa1e0709",
     ethUsdPriceFeed: "0x8A753747A1Fa494EC906cE90E9f37563A8AF630e",
-    keyHash: "0xd89b2bf150e3b9e13446986e571fb9cab24b13cea0a43ea20a6049a85cc807cc",
+    keyHash: "0x9fe0eebf5e446e3c998ec9bb19951541aee00bb90ea201ae456421a2ded86805",
     vrfCoordinator: "0x6168499c0cFfCaCD319c818142124B7A15E857ab",
     oracle: "0xc57b33452b4f7bb189bb5afae9cc4aba1f7a4fd8",
     jobId: "6b88e0402e5d415eb946e528b8e0c7ba",
@@ -67,6 +67,8 @@ export const networkConfig: NetworkConfigMap = {
   5: {
     name: "goerli",
     linkToken: "0x326c977e6efc84e512bb9c30f76e30c160ed06fb",
+    keyHash: "0x79d3d8832d904592c0bf9818b621522c988bb8b0c05cdc3b15aea1b6e8db0c15",
+    vrfCoordinator: "0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D",
     fundAmount: BigNumber.from("0"),
   },
   137: {
@@ -78,7 +80,7 @@ export const networkConfig: NetworkConfigMap = {
     fee: "100000000000000",
     fundAmount: BigNumber.from("100000000000000"),
   },
-}
+};
 
-export const developmentChains: string[] = ["hardhat", "localhost"]
-export const VERIFICATION_BLOCK_CONFIRMATIONS = 6
+export const developmentChains: string[] = ["hardhat", "localhost"];
+export const VERIFICATION_BLOCK_CONFIRMATIONS = 6;
