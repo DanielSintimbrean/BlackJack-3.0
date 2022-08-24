@@ -74,7 +74,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     ////////////////////
 
     modifier inGame() {
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
         if (table.gameState == GameState.NotPlaying) {
             revert BlackJack3__NotInAGame();
         }
@@ -82,7 +82,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     modifier notInGame() {
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
         if (table.gameState == GameState.InGame) {
             revert BlackJack3__InAGame();
         }
@@ -90,7 +90,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     modifier notRandomOperationEmitted() {
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
         if (table.randomOperationStatus == RandomOperationStatus.Waiting) {
             revert BlackJack3__RandomOperationSended();
         }
@@ -141,7 +141,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
 
     mapping(uint256 => BlackJackTable) private tablesRequest;
 
-    mapping(address => BlackJackTable) public tables;
+    mapping(address => BlackJackTable) private s_tables;
 
     /////////////////////////////
     //    Constructor         //
@@ -164,11 +164,11 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             revert BlackJack3__InsufficientETH();
         }
 
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
         table.amountBet = msg.value;
         table.player = msg.sender;
         table.randomOperationStatus = RandomOperationStatus.Waiting;
-        tables[msg.sender] = table;
+        s_tables[msg.sender] = table;
 
         performRandomOperation(RandomOperationAt.StartGame, table);
     }
@@ -177,7 +177,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
      * @notice hit
      */
     function hit() public inGame {
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
         performRandomOperation(RandomOperationAt.Hit, table);
     }
 
@@ -185,7 +185,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
      * @notice stand
      */
     function stand() public inGame {
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
         performRandomOperation(RandomOperationAt.Stand, table);
     }
 
@@ -193,14 +193,14 @@ contract BlackJack3 is VRFConsumerBaseV2 {
      * @notice stand
      */
     function surrender() public inGame {
-        BlackJackTable memory table = tables[msg.sender];
+        BlackJackTable memory table = s_tables[msg.sender];
 
         if (table.dealerCards.length != 1 || table.playerCards.length != 2) {
             revert BlackJack3__NotInFirstRound();
         }
 
         uint256 amountToReturn = table.amountBet / 2;
-        delete tables[msg.sender];
+        delete s_tables[msg.sender];
 
         (bool success, ) = msg.sender.call{ value: amountToReturn }("");
         require(success);
@@ -222,7 +222,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         table.randomOperationAt = _randomOperationAt;
 
         tablesRequest[requestId] = table;
-        tables[table.player] = table;
+        s_tables[table.player] = table;
 
         emit RandomOperationRequest(requestId, _randomOperationAt, msg.sender);
     }
@@ -267,7 +267,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             table.gameState = GameState.InGame;
             table.randomOperationStatus = RandomOperationStatus.NotSended;
 
-            tables[player] = table;
+            s_tables[player] = table;
 
             emit GameStarted(
                 player,
@@ -298,7 +298,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
             uint16 dealerValue = getTotalValueOfCards(dealerCards);
             uint16 playerValue = getTotalValueOfCards(playerCards);
 
-            delete tables[player];
+            delete s_tables[player];
 
             if (dealerValue > 21 || playerValue > dealerValue) {
                 uint256 amountSend = amountBet * 2;
@@ -343,14 +343,14 @@ contract BlackJack3 is VRFConsumerBaseV2 {
                 uint16 dealerValue = getTotalValueOfCards(dealerCards);
                 uint16 playerValue = getTotalValueOfCards(playerCards);
 
-                delete tables[player];
+                delete s_tables[player];
 
                 emit PlayerLose(player, playerCards, playerValue, dealerCards, dealerValue);
 
                 return;
             }
 
-            tables[player] = table;
+            s_tables[player] = table;
             return;
         }
 
@@ -377,12 +377,24 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     }
 
     function getPlayerCards(address _player) public view returns (uint16[21] memory) {
-        BlackJackTable memory table = tables[_player];
+        BlackJackTable memory table = s_tables[_player];
         return table.playerCards;
     }
 
     function getDealerCards(address _player) public view returns (uint16[21] memory) {
-        BlackJackTable memory table = tables[_player];
+        BlackJackTable memory table = s_tables[_player];
         return table.dealerCards;
+    }
+
+    function getTable(address _player)
+        public
+        view
+        returns (
+            BlackJackTable memory table,
+            uint16[21] memory playerCards,
+            uint16[21] memory dealerCards
+        )
+    {
+        return (s_tables[_player], s_tables[_player].playerCards, s_tables[_player].dealerCards);
     }
 }
