@@ -1,6 +1,6 @@
 import { VRFCoordinatorV2Mock__factory, VRFCoordinatorV2Mock } from "../typechain-types";
 import { ethers } from "hardhat";
-import { contract } from "../utilis/contractsName";
+import { contract } from "../utils/contractsName";
 
 const BASE_FEE = "100000000000000000";
 const GAS_PRICE_LINK = "1000000000"; // 0.000000001 LINK per gas

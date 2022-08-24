@@ -1,10 +1,11 @@
 import { setBalance } from "@nomicfoundation/hardhat-network-helpers";
 import { ethers, network } from "hardhat";
-import { contract } from "../utilis/contractsName";
+import { contract } from "../utils/contractsName";
 import { VRFCoordinatorV2Mock, BlackJack3, BlackJack3__factory } from "../typechain-types";
 import { BigNumber, ContractReceipt, ContractTransaction } from "ethers";
 import { networkConfig } from "../helper-hardhat-config";
 import { deployVRFCoordinatorV2Mock } from "../deploy/VRFCoordinatorV2Mock";
+import { verify } from "../utils/verify";
 
 export async function deployBlackJack3(): Promise<{
   BlackJack3: BlackJack3;
@@ -52,6 +53,9 @@ export async function deployBlackJack3(): Promise<{
   if (VRFCoordinatorV2Mock) {
     await VRFCoordinatorV2Mock.addConsumer(subscriptionId, BlackJack3.address);
     await setBalance(BlackJack3.address, ethers.utils.parseEther("10"));
+  } else {
+    await BlackJack3.deployTransaction.wait(6);
+    await verify(BlackJack3.address, [subscriptionId, vrfCoordinatorAddress!, keyHash!]);
   }
 
   return { BlackJack3, VRFCoordinatorV2Mock, subscriptionId, vrfCoordinatorAddress };
