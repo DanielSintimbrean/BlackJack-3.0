@@ -5,18 +5,21 @@ import { BigNumber, BigNumberish, ContractTransaction } from "ethers";
 import { Interface } from "ethers/lib/utils";
 import { ethers, network, tracer } from "hardhat";
 import { deployBlackJack3 } from "../../deploy/BlackJack3";
-import { BlackJack3, VRFCoordinatorV2Mock } from "../../typechain-types";
+import { BlackJack3, chainlink, VRFCoordinatorV2Mock } from "../../typechain-types";
 
 describe("BlackJack3", function () {
   let BlackJack3: BlackJack3;
   let subscriptionId: BigNumber;
   let VRFCoordinatorV2Mock: VRFCoordinatorV2Mock | undefined;
+  let deployer: SignerWithAddress;
+  let chainLink: SignerWithAddress;
 
   beforeEach(async function () {
     const deployed = await loadFixture(deployBlackJack3);
     BlackJack3 = deployed.BlackJack3;
     subscriptionId = deployed.subscriptionId;
     VRFCoordinatorV2Mock = deployed.VRFCoordinatorV2Mock;
+    [deployer, chainLink] = await ethers.getSigners();
   });
 
   describe("Validations", function () {
@@ -38,8 +41,6 @@ describe("BlackJack3", function () {
         this.skip();
         return;
       }
-
-      const [deployer, chainLink] = await ethers.getSigners();
 
       VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
 
@@ -82,6 +83,32 @@ describe("BlackJack3", function () {
         "BlackJack3__InAGame"
       );
     });
+    it("Start a game and then surrender", async function () {
+      if (!VRFCoordinatorV2Mock) {
+        this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
+        this.skip();
+        return;
+      }
+
+      await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock);
+
+      await BlackJack3.surrender();
+
+      checkIfTableIsReset(BlackJack3, deployer);
+    });
+    it("Start a game, hit, and then surrender", async function () {
+      if (!VRFCoordinatorV2Mock) {
+        this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
+        this.skip();
+        return;
+      }
+
+      await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock, [1, 1, 1]);
+
+      await BlackJack3__hit(BlackJack3, VRFCoordinatorV2Mock, 10);
+
+      await expect(BlackJack3.surrender()).to.be.revertedWithCustomError(BlackJack3, "BlackJack3__NotInFirstRound");
+    });
   });
 
   describe("Playing game", function () {
@@ -91,8 +118,6 @@ describe("BlackJack3", function () {
         this.skip();
         return;
       }
-
-      const [deployer, chainLink] = await ethers.getSigners();
 
       const initialPlayerBalance = await deployer.getBalance();
       const initialContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
@@ -155,7 +180,6 @@ describe("BlackJack3", function () {
         return;
       }
 
-      const [deployer, chainLink] = await ethers.getSigners();
       const initialPlayerBalance = await deployer.getBalance();
       const initialContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
 

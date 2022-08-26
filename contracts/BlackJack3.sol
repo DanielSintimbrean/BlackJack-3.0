@@ -195,7 +195,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
     function surrender() public inGame {
         BlackJackTable memory table = s_tables[msg.sender];
 
-        if (table.dealerCards.length != 1 || table.playerCards.length != 2) {
+        if (table.dealerCardsNum != 1 || table.playerCardsNum != 2) {
             revert BlackJack3__NotInFirstRound();
         }
 
