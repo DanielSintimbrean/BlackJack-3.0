@@ -203,7 +203,7 @@ contract BlackJack3 is VRFConsumerBaseV2 {
         delete s_tables[msg.sender];
 
         (bool success, ) = msg.sender.call{ value: amountToReturn }("");
-        require(success);
+        if (!success) revert BlackJack3__CallNotSuccess();
     }
 
     /**

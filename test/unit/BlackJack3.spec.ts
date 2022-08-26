@@ -44,7 +44,7 @@ describe("BlackJack3", function () {
 
       VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
 
-      await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock, [0, 1, 2, 3, 4, 5, 6, 7]);
+      await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock, [0, 1, 2]);
 
       let playerCards = await BlackJack3.getPlayerCards(deployer.address);
       let dealerCards = await BlackJack3.getDealerCards(deployer.address);
@@ -108,6 +108,28 @@ describe("BlackJack3", function () {
       await BlackJack3__hit(BlackJack3, VRFCoordinatorV2Mock, 10);
 
       await expect(BlackJack3.surrender()).to.be.revertedWithCustomError(BlackJack3, "BlackJack3__NotInFirstRound");
+    });
+
+    it("Can not hit if player is not in a game", async function () {
+      await expect(BlackJack3.hit()).to.be.revertedWithCustomError(BlackJack3, "BlackJack3__NotInAGame");
+    });
+
+    it("Can not surrender if player is not in a game", async function () {
+      await expect(BlackJack3.surrender()).to.be.revertedWithCustomError(BlackJack3, "BlackJack3__NotInAGame");
+    });
+
+    it("Can not start game with no payment", async function () {
+      await expect(BlackJack3.startGame()).to.be.revertedWithCustomError(BlackJack3, "BlackJack3__InsufficientETH");
+    });
+    it("Can not start game with less than min amount", async function () {
+      const minAmount = await BlackJack3.MIN_AMOUNT();
+      await expect(BlackJack3.startGame({ value: minAmount.div(2) })).to.be.revertedWithCustomError(
+        BlackJack3,
+        "BlackJack3__InsufficientETH"
+      );
+    });
+    it("Can not stand if player is not in a game", async function () {
+      await expect(BlackJack3.hit()).to.be.revertedWithCustomError(BlackJack3, "BlackJack3__NotInAGame");
     });
   });
 
@@ -189,13 +211,6 @@ describe("BlackJack3", function () {
 
       const { gasCost: hitEthUsed } = await BlackJack3__hit(BlackJack3, VRFCoordinatorV2Mock, 4);
 
-      let { playerCards, dealerCards } = await BlackJack3.getTable(deployer.address);
-
-      playerCards = playerCards.filter((n) => n.toString() != "0");
-      dealerCards = dealerCards.filter((n) => n.toString() != "0");
-
-      assert.lengthOf(playerCards, 3);
-      assert.lengthOf(dealerCards, 1);
       /// Mark
 
       const { gasCost: standEthUsed, vrfReceipt } = await BlackJack3__stand(BlackJack3, VRFCoordinatorV2Mock, [6]);
@@ -236,6 +251,119 @@ describe("BlackJack3", function () {
       expect(differenceContract).to.equal(ethers.utils.parseEther("-1"));
       // Player win 1 ETH
       expect(differencePlayer).to.equal(ethers.utils.parseEther("1").sub(ethGasUsed));
+
+      checkIfTableIsReset(BlackJack3, deployer);
+    });
+    it("Complete a game that ends in a draw ", async function () {
+      if (!VRFCoordinatorV2Mock) {
+        this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
+        this.skip();
+        return;
+      }
+
+      const initialPlayerBalance = await deployer.getBalance();
+      const initialContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
+
+      const { gasCost: startGameEthUsed } = await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock, [0, 0, 0]);
+
+      const { gasCost: hitEthUsed } = await BlackJack3__hit(BlackJack3, VRFCoordinatorV2Mock, 4);
+
+      /// Mark
+
+      const { gasCost: standEthUsed, vrfReceipt } = await BlackJack3__stand(BlackJack3, VRFCoordinatorV2Mock, [0, 4]);
+
+      const { data, topics } = vrfReceipt.events![2];
+      const IPlayerGood = new Interface([
+        "event PlayerDraft(address indexed player, uint16[21] playerCards, uint16 playerCardsValue, uint16[21] dealerCards, uint16 dealerCardsValue)",
+      ]);
+
+      const log = IPlayerGood.parseLog({ data, topics });
+      const { player, playerCards: pCards, playerCardsValue, dealerCards: dCards, dealerCardsValue } = log.args;
+
+      // Address
+      expect(player).to.equal(deployer.address);
+
+      // PlayerCards
+      expectedCards([1, 1, 5], pCards);
+
+      // PlayerCardsValue
+      expect(playerCardsValue).to.equal(17);
+
+      // DealerCards
+      expectedCards([1, 1, 5], dCards);
+
+      // DealerCardsValue
+      expect(dealerCardsValue).to.equal(17);
+
+      mine(10);
+
+      const endingPlayerBalance = await deployer.getBalance();
+      const endingContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      const ethGasUsed = standEthUsed.add(hitEthUsed).add(startGameEthUsed);
+      const differencePlayer = endingPlayerBalance.sub(initialPlayerBalance);
+      const differenceContract = endingContractBalance.sub(initialContractBalance);
+
+      // Contract has de same amount
+      expect(differenceContract).to.equal(ethers.utils.parseEther("0"));
+      // Player lose only the gas used for transactions
+      expect(differencePlayer).to.equal(ethers.utils.parseEther("0").sub(ethGasUsed));
+
+      checkIfTableIsReset(BlackJack3, deployer);
+    });
+    it("Complete a game that player lose when hit ", async function () {
+      if (!VRFCoordinatorV2Mock) {
+        this.runnable().title += " -- Skipped with reason: Not in a Develop Chain";
+        this.skip();
+        return;
+      }
+
+      const initialPlayerBalance = await deployer.getBalance();
+      const initialContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      VRFCoordinatorV2Mock = VRFCoordinatorV2Mock.connect(chainLink);
+
+      const { gasCost: startGameEthUsed } = await BlackJack3__startGame(BlackJack3, VRFCoordinatorV2Mock, [10, 10, 0]);
+
+      const { gasCost: hitEthUsed, vrfReceipt } = await BlackJack3__hit(BlackJack3, VRFCoordinatorV2Mock, 4);
+
+      /// Mark
+      const { data, topics } = vrfReceipt.events![2];
+      const IPlayerGood = new Interface([
+        "event PlayerLose(address indexed player, uint16[21] playerCards, uint16 playerCardsValue, uint16[21] dealerCards, uint16 dealerCardsValue)",
+      ]);
+
+      const log = IPlayerGood.parseLog({ data, topics });
+      const { player, playerCards: pCards, playerCardsValue, dealerCards: dCards, dealerCardsValue } = log.args;
+
+      // Address
+      expect(player).to.equal(deployer.address);
+
+      // PlayerCards
+      expectedCards([11, 11, 5], pCards);
+
+      // PlayerCardsValue
+      expect(playerCardsValue).to.equal(25);
+
+      // DealerCards
+      expectedCards([1], dCards);
+
+      // DealerCardsValue
+      expect(dealerCardsValue).to.equal(11);
+
+      const endingPlayerBalance = await deployer.getBalance();
+      const endingContractBalance = await BlackJack3.provider.getBalance(BlackJack3.address);
+
+      const ethGasUsed = hitEthUsed.add(startGameEthUsed);
+      const differencePlayer = endingPlayerBalance.sub(initialPlayerBalance);
+      const differenceContract = endingContractBalance.sub(initialContractBalance);
+
+      // Contract win 1 Eth
+      expect(differenceContract).to.equal(ethers.utils.parseEther("1"));
+      // Player lose 1 Eth
+      expect(differencePlayer).to.equal(ethers.utils.parseEther("-1").sub(ethGasUsed));
 
       checkIfTableIsReset(BlackJack3, deployer);
     });
@@ -290,6 +418,8 @@ async function BlackJack3__startGame(
   const startGameTx = await BlackJack3.startGame({ value });
   const startGameRc = await startGameTx.wait();
 
+  const [deployer] = await ethers.getSigners();
+
   const { requestId, randomOperationAt } = startGameRc.events!.find((e) => e.event == "RandomOperationRequest")!.args!;
 
   const { gasUsed, effectiveGasPrice } = startGameRc;
@@ -297,16 +427,26 @@ async function BlackJack3__startGame(
 
   expect(randomOperationAt).to.equal(RandomOperationAt.startGame);
 
-  let tx: Promise<ContractTransaction>;
+  let tx: ContractTransaction;
   await expect(
-    (tx = VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
+    (tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
       requestId,
       BlackJack3.address,
       cardsArray(cardsToReturn, 8)
     ))
   ).to.emit(BlackJack3, "GameStarted");
 
-  let vrfReceipt = await (await tx).wait();
+  let vrfReceipt = await tx.wait();
+
+  let { playerCards, dealerCards, table } = await BlackJack3.getTable(deployer.address);
+
+  playerCards = playerCards.filter((n) => n.toString() != "0");
+  dealerCards = dealerCards.filter((n) => n.toString() != "0");
+
+  assert.lengthOf(playerCards, 2);
+  assert.lengthOf(dealerCards, 1);
+  assert.equal(table.dealerCardsNum.toString(), "1");
+  assert.equal(table.playerCardsNum.toString(), "2");
 
   return { requestId, gasCost, vrfReceipt };
 }
@@ -321,9 +461,27 @@ async function BlackJack3__hit(BlackJack3: BlackJack3, VRFCoordinatorV2Mock: VRF
   const gasCost = gasUsed.mul(effectiveGasPrice);
 
   expect(randomOperationAt).to.equal(RandomOperationAt.hit);
-  await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(requestId, BlackJack3.address, cardsArray([newCard], 8));
+  let tx: ContractTransaction;
+  expect(
+    (tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
+      requestId,
+      BlackJack3.address,
+      cardsArray([newCard], 8)
+    ))
+  ).to.emit(BlackJack3, "PlayerHit");
 
-  return { requestId, gasCost };
+  const vrfReceipt = await tx.wait();
+
+  const [deployer] = await ethers.getSigners();
+  let { playerCards, dealerCards, table } = await BlackJack3.getTable(deployer.address);
+
+  playerCards = playerCards.filter((n) => n.toString() != "0");
+  dealerCards = dealerCards.filter((n) => n.toString() != "0");
+
+  assert.lengthOf(playerCards, table.playerCardsNum);
+  assert.lengthOf(dealerCards, table.dealerCardsNum);
+
+  return { requestId, gasCost, vrfReceipt };
 }
 
 async function BlackJack3__stand(
@@ -341,11 +499,14 @@ async function BlackJack3__stand(
 
   expect(randomOperationAt).to.equal(RandomOperationAt.stand);
 
-  const tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
-    requestId,
-    BlackJack3.address,
-    cardsArray(newCards, 8)
-  );
+  let tx: ContractTransaction;
+  expect(
+    (tx = await VRFCoordinatorV2Mock.fulfillRandomWordsWithOverride(
+      requestId,
+      BlackJack3.address,
+      cardsArray(newCards, 8)
+    ))
+  ).to.emit(BlackJack3, "PlayerStand");
 
   let vrfReceipt = await tx.wait();
 
